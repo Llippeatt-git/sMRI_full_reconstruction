@@ -17,6 +17,8 @@ from statistics import mode
 import yaml
 import sys
 
+
+'''
 #remove warnings
 def warn(*args, **kwargs):
     pass
@@ -28,6 +30,9 @@ sys.path.append('../')
 sys.path.append('./')
 sys.path.append('../models/')
 sys.path.append('./workspace/sMAE/')
+'''
+
+
 from tools.utils import logging_sit, save_reconstruction_mae, get_data_path, get_dataloaders, get_dimensions, get_scheduler
 
 from datetime import datetime
@@ -65,15 +70,14 @@ def train(config):
     #mesh_resolution
     ico_mesh = config['mesh_resolution']['ico_mesh']
     ico_grid = config['mesh_resolution']['ico_grid']
-    num_patches = config['ico_{}_grid'.format(ico_grid)]['num_patches']
-    num_vertices = config['ico_{}_grid'.format(ico_grid)]['num_vertices']
+    num_patches = config[f'ico_{ico_grid}_grid']['num_patches']
+    num_vertices = config[f'ico_{ico_grid}_grid']['num_vertices']
     sampling = config['mesh_resolution']['sampling']
 
     #data
     dataset = config['data']['dataset']
     task = config['data']['task']
     configuration = config['data']['configuration']
-    hemi = config['data']['hemi']
 
     #training
     gpu = config['training']['gpu']
@@ -85,24 +89,22 @@ def train(config):
         channels = config['transformer']['channels']
     num_channels = len(channels)
 
-    if hemi == 'full':
-        num_patches*=2
+    #hemi = config['data']['hemi']
+    #if hemi == 'full':
+    #    num_patches*=2
 
     #data path
-    try:
-        data_path = get_data_path(config)
-    except:
-        raise("can't get data path")
+    data_path = config['data']['path_to_data']
+    
+    device = torch.device(f"cuda:{gpu}" if torch.cuda.is_available() else "cpu")
 
-    device = torch.device("cuda:{}".format(gpu) if torch.cuda.is_available() else "cpu")
-
-    print('method: {}'.format(config['SSL']))
-    print('gpu: {}'.format(device))   
-    print('dataset: {}'.format(dataset))  
-    print('task: {}'.format(task))  
-    print('model: {}'.format(config['MODEL']))
-    print('configuration: {}'.format(configuration))  
-    print('data path: {}'.format(data_path))
+    print(f'method: {config['SSL']}')
+    print(f'gpu: {device}')   
+    print(f'dataset: {dataset}')  
+    print(f'task: {task}')  
+    print(f'model: {config['MODEL']}')
+    print(f'configuration: {configuration}')  
+    print(f'data path: {data_path}')
 
     ##############################
     ######     DATASET      ######
@@ -114,10 +116,10 @@ def train(config):
     print('#'*30)
     print('')
     if config['MODEL'] == 'sit':
-        print('Mesh resolution - ico {}'.format(ico_mesh))
-        print('Grid resolution - ico {}'.format(ico_grid))
-        print('Number of patches - {}'.format(num_patches))
-        print('Number of vertices - {}'.format(num_vertices))
+        print(f'Mesh resolution - ico {ico_mesh}')
+        print(f'Grid resolution - ico {ico_grid}')
+        print(f'Number of patches - {num_patches}')
+        print(f'Number of vertices - {num_vertices}')
         print('')
 
     try:
@@ -141,13 +143,13 @@ def train(config):
         folder_to_save_model = logging_sit(config,pretraining=True)
     else:
         raise('not implemented yet')
+
+
     
-    try:
-        os.makedirs(folder_to_save_model,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save_model))
-    except OSError:
-        print('folder already exist: {}'.format(folder_to_save_model))
-    
+    if not os.path.exists(folder_to_save_model):
+        os.mkdir(folder_to_save_model)
+        print(f'Creating folder: {folder_to_save_model}')
+
     #tensorboard
     writer = SummaryWriter(log_dir=folder_to_save_model)
 
@@ -191,7 +193,7 @@ def train(config):
         checkpoint = torch.load(config['training']['path_from_ckpt'])
         model.load_state_dict(checkpoint['model_state_dict']) 
         epoch_to_start = checkpoint['epoch']
-        print('Starting training from epoch  {}'.format(epoch_to_start))
+        print(f'Starting training from epoch  {epoch_to_start}')
     else:
         epoch_to_start= 0
         print('Training from scratch')
