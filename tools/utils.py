@@ -75,42 +75,6 @@ def get_data_path(config):
     
     return data_path
 
-def get_data_path_segmentation(config):
-
-    dataloader = config['data']['dataloader']
-    dataset = config['data']['dataset']
-    task = config['data']['task']
-    modality = config['data']['modality']
-    configuration = config['data']['configuration']
-
-    if str(dataloader) == 'metrics':
-        if dataset == 'UKB':
-            if modality == 'cortical_metrics':
-                if task == 'segmentation_msmall':
-                    data_path = os.path.join(config['data']['path_to_data'],dataset,'metrics/merged_resample_msmall/')
-                    labels_path = os.path.join(config['data']['path_to_data'],dataset,'metrics/resample_segmentation_maps')
-                elif task == 'segmentation':
-                    if config['data']['masking_preprocess']:
-                        data_path = os.path.join(config['data']['path_to_data'],dataset,'metrics/merged_resample_{}_mask/'.format(config['data']['masking_preprocess']))
-                        labels_path = os.path.join(config['data']['path_to_data'],dataset,'metrics/resample_segmentation_maps_{}_mask'.format(config['data']['masking_preprocess']))  
-                    else:
-                        data_path = os.path.join(config['data']['path_to_data'],dataset,'metrics/merged_resample/')
-                        labels_path = os.path.join(config['data']['path_to_data'],dataset,'metrics/resample_segmentation_maps')  
-                                
-        elif dataset == 'MindBoggle':
-            if modality == 'cortical_metrics':
-                if task == 'segmentation':
-                    if config['data']['masking_preprocess']:
-                        data_path = os.path.join(config['data']['path_to_data'],dataset,'{}/mindboggle_merged_metrics_{}_mask'.format(configuration,config['data']['masking_preprocess']))
-                        labels_path = os.path.join(config['data']['path_to_data'],dataset,'{}/mindboggle_resample_labels_ico6_{}_mask'.format(configuration,config['data']['masking_preprocess'])) 
-                    else:
-                        data_path = os.path.join(config['data']['path_to_data'],dataset,'{}/mindboggle_merged_metrics'.format(configuration))
-                        labels_path = os.path.join(config['data']['path_to_data'],dataset,'{}/mindboggle_resample_labels_ico6'.format(configuration)) 
-                          
-    else:
-        raise('not implemented yet')
-    
-    return data_path, labels_path
 
 
 def get_dataloaders(config, 
@@ -142,28 +106,6 @@ def get_dataloaders(config,
         return train_loader
     else:
         raise('not implemented yet')
-
-
-
-def get_dataloaders_segmentation(config, 
-                    data_path,
-                    labels_path,):
-
-    dataloader = config['data']['dataloader']
-    sampler = config['training']['sampler']
-    bs = config['training']['bs']
-    bs_val = config['training']['bs_val']
-    modality = config['data']['modality']
-
-    if str(dataloader)=='metrics':
-        if str(modality) == 'cortical_metrics' or str(modality) == 'memory_task':
-            train_loader, val_loader, test_loader = loader_metrics_segmentation(data_path,labels_path,sampler,config)
-        else:
-            raise('not implemented yet')
-    else:
-        raise('not implemented yet')
-    
-    return train_loader, val_loader, test_loader
 
 def get_dataloaders_cv(config, 
                         data_path,
@@ -316,16 +258,6 @@ def save_gifti(data, filename):
     gifti_file.add_gifti_data_array(nb.gifti.gifti.GiftiDataArray(data))
     nb.save(gifti_file,filename)
 
-def save_label_UKB(data, filename):
-    label =nb.load('/home/sd20/data/UKB/metrics/resample_segmentation_maps/1033131.L.aparc.ico6_fs_LR.label.gii')
-    label.darrays[0].data = data
-    nb.save(label,filename)
-
-def save_label_MindBoggle(data, filename):
-    label =nb.load('/home/sd20/data/MindBoggle/mindboggle_resample_labels_ico6/lh.labels.HLN-12-5.ico6.DKT31.manual.label.gii')
-    label.darrays[0].data = data
-    nb.save(label,filename)
-
 
 def logging_sit(config, pretraining=False):
     if pretraining:
@@ -386,11 +318,8 @@ def logging_ms_sit(config, pretraining=False):
     if pretraining:
         folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],'pretraining',config['data']['task'],config['SSL'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
     
-    else:
-        if config['data']['task'] =='segmentation':
-            folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],config['data']['task'],'{}_mask'.format(config['data']['masking_preprocess']),config['mesh_resolution']['ico_grid'],config['data']['configuration'])
-        else:
-            folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],config['data']['task'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
+    else:    
+        folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],config['data']['task'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
     
     if config['augmentation']['prob_augmentation']:
         folder_to_save_model = os.path.join(folder_to_save_model,'augmentation')
@@ -451,67 +380,6 @@ def plot_regression_results_UKB(predictions, targets,folder_to_save, epoch):
     plt.ylabel('targets')
     plt.plot([45,80],[45,80],color='r')
     plt.savefig(path_to_save)
-
-
-def save_segmentation_results_UKB(config,predictions,folder_to_save, epoch):
-
-    try:
-        os.makedirs(folder_to_save,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save))
-    except OSError:
-        pass
-
-    val_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/UKB/cortical_metrics/segmentation/half/val.csv')).ids
-    for i, id in enumerate(val_ids):
-        save_label_UKB(predictions[i],os.path.join(folder_to_save,'{}_{}.label.gii'.format(str(id).split('.')[0],epoch)))
-
-def save_segmentation_results_MindBoggle(config,predictions,folder_to_save, epoch):
-
-    try:
-        os.makedirs(folder_to_save,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save))
-    except OSError:
-        pass
-    
-    if config['data']['hemi_part']=='all':
-        val_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/MindBoggle/cortical_metrics/segmentation/half/val.csv')).ids
-    elif config['data']['hemi_part']=='left':
-        val_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/MindBoggle/cortical_metrics/segmentation/half/val_L.csv')).ids
-    elif config['data']['hemi_part']=='right':
-        val_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/MindBoggle/cortical_metrics/segmentation/half/val_R.csv')).ids
-
-    for i, id in enumerate(val_ids):
-        save_label_MindBoggle(predictions[i],os.path.join(folder_to_save,'{}_{}.label.gii'.format(str(id).split('.')[0],epoch)))
-
-def save_segmentation_results_UKB_test(config,predictions,folder_to_save, epoch):
-
-    try:
-        os.makedirs(folder_to_save,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save))
-    except OSError:
-        pass
-
-    test_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/UKB/cortical_metrics/segmentation/half/test.csv')).ids
-    for i, id in enumerate(test_ids):
-        save_label_UKB(predictions[i],os.path.join(folder_to_save,'{}_{}.label.gii'.format(str(id).split('.')[0],epoch)))
-
-def save_segmentation_results_MindBoggle_test(config,predictions,folder_to_save, epoch):
-
-    try:
-        os.makedirs(folder_to_save,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save))
-    except OSError:
-        pass
-    
-    if config['data']['hemi_part']=='all':
-        test_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/MindBoggle/cortical_metrics/segmentation/half/test.csv')).ids
-    elif config['data']['hemi_part']=='left':
-        test_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/MindBoggle/cortical_metrics/segmentation/half/test_L.csv')).ids
-    elif config['data']['hemi_part']=='right':
-        test_ids = pd.read_csv(os.path.join(config['data']['path_to_workdir'],'labels/MindBoggle/cortical_metrics/segmentation/half/test_R.csv')).ids
-
-    for i, id in enumerate(test_ids):
-        save_label_MindBoggle(predictions[i],os.path.join(folder_to_save,'{}_{}.label.gii'.format(str(id).split('.')[0],epoch)))
 
 
 def plot_regression_results_dHCP(predictions, targets,folder_to_save, epoch):

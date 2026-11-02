@@ -491,7 +491,7 @@ def train(config):
 
 if __name__ == '__main__':
 
-
+    '''
     parser = argparse.ArgumentParser(description='ViT')
 
     parser.add_argument(
@@ -501,8 +501,10 @@ if __name__ == '__main__':
                         help='path where the data is stored')
     
     args = parser.parse_args()
+    '''
 
-    with open(args.config) as f:
+    config_file = "/ceph/chpc/shared/janine_bijsterbosch_group/lucas_scratch/sMRI_full_reconstruction/config/SiT/pretraining/smae.yml"
+    with open(config_file) as f:
         config = yaml.safe_load(f)
 
     # Call training
