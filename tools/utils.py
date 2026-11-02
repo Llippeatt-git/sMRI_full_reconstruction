@@ -31,6 +31,8 @@ from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from warmup_scheduler import GradualWarmupScheduler
 
 
+# no need to get data path, as we are working in a bounded subspace of just HCPYA
+'''
 def get_data_path(config):
 
     dataloader = config['data']['dataloader']
@@ -75,22 +77,82 @@ def get_data_path(config):
     
     return data_path
 
-
+'''
 
 def get_dataloaders(config, 
                     data_path):
 
     dataloader = config['data']['dataloader']
-    sampler = config['training']['sampler']
+    #sampler = config['training']['sampler']
     bs = config['training']['bs']
     bs_val = config['training']['bs_val']
     modality = config['data']['modality']
     runtime = config['training']['runtime']
 
-    if str(dataloader)=='metrics':
-        if str(modality) == 'cortical_metrics' or str(modality) == 'memory_task':
-            train_loader, val_loader, test_loader = loader_metrics(data_path,sampler,config)
-            return train_loader, val_loader, test_loader
+    #if str(dataloader)=='metrics':
+    #    if str(modality) == 'cortical_metrics' or str(modality) == 'memory_task':
+    #        train_loader, val_loader, test_loader = loader_metrics(data_path,sampler,config)
+    #        return train_loader, val_loader, test_loader
+    if str(dataloader)=="numpy":
+            
+        train_data = np.load(os.path.join(data_path,'train_data.npy'))
+        train_label = np.load(os.path.join(data_path,'train_labels.npy'))
+
+        mean = train_data.mean()
+        std = train_data.std()
+        print(f'train mean: {mean:.4f} | std: {std:.4f}\n')
+
+            
+
+        val_data = np.load(os.path.join(data_path,'validation_data.npy'))
+        val_label = np.load(os.path.join(data_path,'validation_labels.npy'))
+
+
+        test_data = np.load(os.path.join(data_path,'test_data.npy'))
+        test_label = np.load(os.path.join(data_path,'test_labels.npy')).reshape(-1)
+        
+
+        ## normalization
+        eps = 1e-8
+        train_data = (train_data - mean) / (std + eps)
+        val_data   = (val_data   - mean) / (std + eps)
+        test_data  = (test_data  - mean) / (std + eps)
+
+        print('training data: {}'.format(train_data.shape))
+        print('validation data: {}'.format(val_data.shape))
+        print('testing data: {}'.format(test_data.shape))
+        print('')
+
+        train_data_dataset = torch.utils.data.TensorDataset(torch.from_numpy(train_data).float(),
+                                                            torch.from_numpy(train_label).float())
+
+        train_loader = torch.utils.data.DataLoader(train_data_dataset,
+                                                        batch_size = bs,
+                                                        shuffle=True,
+                                                        num_workers=16)
+            
+        val_data_dataset = torch.utils.data.TensorDataset(torch.from_numpy(val_data).float(),
+                                                          torch.from_numpy(val_label).float())
+
+    
+        val_loader = torch.utils.data.DataLoader(val_data_dataset,
+                                                batch_size = bs_val,
+                                                shuffle=False,
+                                                num_workers=16)
+
+        test_data_dataset = torch.utils.data.TensorDataset(torch.from_numpy(test_data).float(),
+                                                           torch.from_numpy(test_label).float())
+
+        test_loader = torch.utils.data.DataLoader(test_data_dataset,
+                                                batch_size = bs_val,
+                                                shuffle=False,
+                                                num_workers=16)
+        
+        return train_loader, val_loader, test_loader
+
+    else:
+            raise('not implemented yet')
+    '''
     elif str(dataloader)=='bold' or str(dataloader)=='fmri':
         print('loading functional data')
         if modality == 'tfMRI':
@@ -104,21 +166,7 @@ def get_dataloaders(config,
             else:
                 train_loader = loader_rfmri(data_path,config)
         return train_loader
-    else:
-        raise('not implemented yet')
-
-def get_dataloaders_cv(config, 
-                        data_path,
-                        k):
-
-    sampler = config['training']['sampler']
-
-    train_loader, test_loader = loader_metrics(data_path,
-                                                sampler,
-                                                config,
-                                                split_cv=k)
-    
-    return train_loader, test_loader
+    '''
     
     
 def get_dimensions(config):
@@ -134,30 +182,8 @@ def get_dimensions(config):
         channels = config['spherical-unet']['channels']
     num_channels = len(channels)
 
-    if config['MODEL'] in ['sit','ms-sit'] and (modality =='rfMRI' or modality =='tfMRI' or modality == 'smooth_rfMRI'): 
-
-        if config['fMRI']['temporal_rep']=='concat':
-
-            T = num_channels
-            N = num_patches * config['fMRI']['nbr_frames']
-            V = num_vertices
-        else:
-            T = num_channels
-            N = num_patches
-            
-            V = num_vertices
-            
-
-        use_bottleneck = False
-        bottleneck_dropout = 0.0
-
-        print('Number of channels {}; Number of patches {}; Number of vertices {}'.format(T, N, V))
-        print('Using bottleneck {}; Dropout bottleneck {}'.format(use_bottleneck,bottleneck_dropout))
-        print('')
-
-        return T, N, V, use_bottleneck, bottleneck_dropout
     
-    elif config['MODEL'] in ['sit','ms-sit'] and (modality == 'cortical_metrics' ):
+    if config['MODEL'] in ['sit','ms-sit'] and (modality == 'cortical_metrics' ):
 
         T = num_channels
         N = num_patches
@@ -166,8 +192,8 @@ def get_dimensions(config):
         use_bottleneck = False
         bottleneck_dropout = 0.0
 
-        print('Number of channels {}; Number of patches {}; Number of vertices {}'.format(T, N, V))
-        print('Using bottleneck {}; Dropout bottleneck {}'.format(use_bottleneck,bottleneck_dropout))
+        print(f'Number of channels {T}; Number of patches {N}; Number of vertices {V}')
+        print(f'Using bottleneck {use_bottleneck}; Dropout bottleneck {bottleneck_dropout}')
         print('')
 
         return T, N, V, use_bottleneck, bottleneck_dropout
@@ -224,7 +250,7 @@ def get_scheduler(config, max_iterations ,optimizer):
     return scheduler
 
 
-
+'''
 def load_weights_imagenet(state_dict,state_dict_imagenet,nb_layers):
 
     state_dict['mlp_head.0.weight'] = state_dict_imagenet['norm.weight'].data
@@ -250,7 +276,7 @@ def load_weights_imagenet(state_dict,state_dict_imagenet,nb_layers):
         state_dict['transformer.layers.{}.1.fn.net.3.bias'.format(i)] = state_dict_imagenet['blocks.{}.mlp.fc2.bias'.format(i)].data
 
     return state_dict
-
+'''
 
 
 def save_gifti(data, filename):
@@ -260,10 +286,11 @@ def save_gifti(data, filename):
 
 
 def logging_sit(config, pretraining=False):
+     #{dataset},{modality},{task},{grid resolution},{configuration}
     if pretraining:
-        folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],'pretraining',config['data']['task'],config['SSL'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
+        folder_to_save_model = f"{config['logging']['folder_to_save_model']}/pretraining"
     else:
-        folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],config['data']['task'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
+        folder_to_save_model = f"{config['logging']['folder_to_save_model']}/train"
     
     if config['augmentation']['prob_augmentation']:
         folder_to_save_model = os.path.join(folder_to_save_model,'augmentation')
@@ -287,121 +314,24 @@ def logging_sit(config, pretraining=False):
     
 
     if config['training']['init_weights']!=False:
-        folder_to_save_model = folder_to_save_model + '-'+config['training']['init_weights']
+        folder_to_save_model = folder_to_save_model + f'-{config['training']['init_weights']}'
 
     if config['training']['finetuning']:
         folder_to_save_model = folder_to_save_model + '-finetune'
     else:
         folder_to_save_model = folder_to_save_model + '-freeze'
 
-    if config['data']['low_train'] and config['data']['dataset']=='dHCP':
-        folder_to_save_model = folder_to_save_model + '-{}%'.format(config['data']['low_train'])
-
     if config['SSL'] == 'smae':
-        folder_to_save_model = folder_to_save_model + '-mask-{}'.format(config['pretraining_smae']['mask_prob'])
-    
-    if config['SSL'] == 'vsmae':
-        folder_to_save_model = folder_to_save_model + '-m{}'.format(config['pretraining_vsmae']['mask_prob'])
-        folder_to_save_model = folder_to_save_model + '-f{}'.format(config['fMRI']['nbr_frames'])
-        folder_to_save_model = folder_to_save_model + '-{}'.format(config['pretraining_vsmae']['masking_type'])
+        folder_to_save_model = folder_to_save_model + f'-mask-{config['pretraining_smae']['mask_prob']}'
         
-    
-    folder_to_save_model = folder_to_save_model + '-bs-{}'.format(config['training']['bs'])
+    folder_to_save_model = folder_to_save_model + f'-bs-{config['training']['bs']}'
 
     if config['training']['restart']:
         folder_to_save_model = folder_to_save_model + '-restart'
         
     return folder_to_save_model
 
-def logging_ms_sit(config, pretraining=False):
-
-    if pretraining:
-        folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],'pretraining',config['data']['task'],config['SSL'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
-    
-    else:    
-        folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],config['data']['task'],config['mesh_resolution']['ico_grid'],config['data']['configuration'])
-    
-    if config['augmentation']['prob_augmentation']:
-        folder_to_save_model = os.path.join(folder_to_save_model,'augmentation')
-    else:
-        folder_to_save_model = os.path.join(folder_to_save_model,'no_augmentation')
-
-    date = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-
-    folder_to_save_model = os.path.join(folder_to_save_model,date)
-
-    if config['transformer']['dim'] == 96:
-        folder_to_save_model = folder_to_save_model + '-tiny'
-    elif config['transformer']['dim'] == 48:
-        folder_to_save_model = folder_to_save_model + '-very-tiny'
-    
-
-    if config['training']['init_weights']!=False:
-        folder_to_save_model = folder_to_save_model + '-'+config['training']['init_weights']
-
-    if config['training']['finetuning']:
-        folder_to_save_model = folder_to_save_model + '-finetune'
-    else:
-        folder_to_save_model = folder_to_save_model + '-freeze'
-
-    return folder_to_save_model
-
-
-def logging_spherical_unet(config):
-
-    folder_to_save_model = config['logging']['folder_to_save_model'].format(config['data']['path_to_workdir'],config['data']['dataset'],config['data']['modality'],config['data']['task'],config['data']['configuration'])
-    
-    if config['augmentation']['prob_augmentation']:
-        folder_to_save_model = os.path.join(folder_to_save_model,'augmentation')
-    else:
-        folder_to_save_model = os.path.join(folder_to_save_model,'no_augmentation')
-
-    date = datetime.today().strftime('%Y-%m-%d-%H:%M:%S')
-
-    folder_to_save_model = os.path.join(folder_to_save_model,date)
-
-    return folder_to_save_model
-
-
-
-def plot_regression_results_UKB(predictions, targets,folder_to_save, epoch):
-
-    try:
-        os.makedirs(folder_to_save,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save))
-    except OSError:
-        pass
-
-    path_to_save = os.path.join(folder_to_save,'results_{}.png'.format(epoch))
-    
-    plt.figure(figsize=(10,10))
-    plt.plot(predictions,targets,'*',color='b')
-    plt.xlabel('predictions')
-    plt.ylabel('targets')
-    plt.plot([45,80],[45,80],color='r')
-    plt.savefig(path_to_save)
-
-
-def plot_regression_results_dHCP(predictions, targets,folder_to_save, epoch):
-
-
-    try:
-        os.makedirs(folder_to_save,exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save))
-    except OSError:
-        pass
-
-    path_to_save = os.path.join(folder_to_save,'results_{}.png'.format(epoch))
-
-    plt.figure(figsize=(10,10))
-    plt.plot(predictions,targets,'*',color='b')
-    plt.xlabel('predictions')
-    plt.ylabel('targets')
-    plt.plot([25,48],[25,48],color='r')
-    plt.plot([20,40],[20,40],color='r')
-    plt.savefig(path_to_save)
-
-
+'''
 def plot_regression_results_HCP(predictions, targets,folder_to_save, epoch):
 
 
@@ -456,7 +386,7 @@ def plot_iq_results_HCP(predictions, targets,folder_to_save, epoch):
     plt.ylabel('targets')
     plt.plot([5,27],[5,27],color='r')
     plt.savefig(path_to_save)
-
+'''
 
 def save_reconstruction_mae(reconstructed_batch,
                             reconstructed_batch_unmasked,
@@ -475,12 +405,15 @@ def save_reconstruction_mae(reconstructed_batch,
                             server,
                             ):
 
-    try:
-        os.makedirs(os.path.join(folder_to_save_model, 'reconstruction', '{}'.format(split)),exist_ok=False)
-        print('Creating folder: {}'.format(os.path.join(folder_to_save_model, 'reconstruction', '{}'.format(split))))
-    except OSError:
-        pass
 
+    recon_folder = os.path.join(folder_to_save_model, 'reconstruction', f'{split}')
+    if not os.path.exists(recon_folder):
+        os.mkdir(recon_folder)
+        print(f'Creating folder: {recon_folder}')
+
+
+
+    ### reconstructing the original ico-6 sphere from the learned embeddings
     indices = pd.read_csv('{}/patch_extraction/msm/triangle_indices_ico_6_sub_ico_{}.csv'.format(path_to_workdir,ico_grid))
 
     original_sphere = np.zeros((40962,num_channels),dtype=np.float32)
@@ -491,7 +424,7 @@ def save_reconstruction_mae(reconstructed_batch,
         indices_to_extract = indices[str(i)].values
         original_sphere[indices_to_extract,:] = new_inputs[0,i,:,:].transpose()
 
-    save_gifti(original_sphere, os.path.join(folder_to_save_model,'reconstruction',split, 'original_sphere_{}_{}.shape.gii'.format(epoch,id)))
+    save_gifti(original_sphere, os.path.join(recon_folder, f'original_sphere_{epoch}_{id}.shape.gii'))
 
     if not server:
         p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model, 'reconstruction', split, 'original_sphere_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
@@ -518,10 +451,10 @@ def save_reconstruction_mae(reconstructed_batch,
             ind =  (unmasked_indices[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
             reconstructed_sphere[indices_to_extract,:] = batch_unmasked[0,:,ind,:].transpose()
         else:
-            print('issue with indices: {}'.format(i))
+            print(f'issue with indices: {i}')
 
     #import pdb;pdb.set_trace()
-    save_gifti(reconstructed_sphere, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'recon_{}_{}_it_{}.shape.gii'.format(split,id,epoch)))
+    save_gifti(reconstructed_sphere, os.path.join(recon_folder, f'recon_{split}_{epoch}_it_{id}.shape.gii'))
 
     if not server:
         p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model, 'reconstruction', split, 'recon_{}_{}_it_{}.shape.gii'.format(split,id,epoch)), 'CORTEX_LEFT'])
@@ -536,7 +469,7 @@ def save_reconstruction_mae(reconstructed_batch,
             reconstructed_sphere_mask_only[indices_to_extract,:] = batch[0,:,ind,:].transpose()
 
     #import pdb;pdb.set_trace()
-    save_gifti(reconstructed_sphere_mask_only, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'recon_mask_{}_{}_it_{}.shape.gii'.format(split,id,epoch)))
+    save_gifti(reconstructed_sphere_mask_only, os.path.join(recon_folder, f'recon_mask_{split}_{epoch}_it_{id}.shape.gii'))
 
     if not server:
         p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model, 'reconstruction', split, 'recon_mask_{}_{}_it_{}.shape.gii'.format(split,id,epoch)), 'CORTEX_LEFT'])
@@ -552,208 +485,11 @@ def save_reconstruction_mae(reconstructed_batch,
             sphere_patched[indices_to_extract,:] = new_inputs[0,i,:,:].transpose()
 
     #import pdb;pdb.set_trace()
-    save_gifti(sphere_patched, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'sphere_patched_{}_{}.shape.gii'.format(epoch,id)))
+    save_gifti(sphere_patched, os.path.join(recon_folder, f'sphere_patched_{epoch}_{id}.shape.gii'))
 
     if not server:
         p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model, 'reconstruction', split, 'sphere_patched_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
         p1.wait()
-        
-
-def save_reconstruction_mae_fmri(reconstructed_batch_token_masked, #
-                            reconstructed_batch_token_not_masked, #
-                            inputs, # 
-                            num_patches, #
-                            ico_grid,
-                            num_frames, # 
-                            ids_tokens_masked, ##
-                            ids_tokens_not_masked, ##
-                            epoch,
-                            folder_to_save_model,
-                            split,
-                            path_to_workdir,
-                            id,
-                            server,
-                            masking_type = 'tubelet',
-                            ):
-
-    try:
-        os.makedirs(os.path.join(folder_to_save_model, 'reconstruction', '{}'.format(split)),exist_ok=False)
-        print('Creating folder: {}'.format(folder_to_save_model))
-    except OSError:
-        pass
-
-    indices = pd.read_csv('{}/patch_extraction/msm/triangle_indices_ico_6_sub_ico_{}.csv'.format(path_to_workdir,ico_grid))
-
-    original_sphere = np.zeros((40962,num_frames),dtype=np.float32)
-
-    B, C, N, V = inputs.shape
-
-    L = N // num_frames
-    n_masked = reconstructed_batch_token_masked.shape[2]
-    n_not_masked = reconstructed_batch_token_not_masked.shape[2]
-
-    ##reintroduce the batch dimension 
-
-    new_inputs = rearrange(inputs, 'b c (t l) v -> b (t c) l v',b=B, c=1, t=num_frames,l=L)
-    new_inputs = np.transpose(new_inputs.cpu().numpy(),(0,2,1,3))
-
-    for i in range(num_patches):
-        indices_to_extract = indices[str(i)].values
-        original_sphere[indices_to_extract,:] = new_inputs[0,i,:,:].transpose()
-    
-    save_gifti(original_sphere, os.path.join(folder_to_save_model,'reconstruction','{}'.format(split), 'input_sphere_{}_{}.shape.gii'.format(epoch,id)))
-
-    if not server:
-        p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction','{}'.format(split), \
-                                                                                                                    'input_sphere_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
-        p1.wait()
-
-    batch_tokens_masked = np.transpose(reconstructed_batch_token_masked.cpu().numpy(),(0,2,1,3))
-    batch_tokens_not_masked = np.transpose(reconstructed_batch_token_not_masked.cpu().numpy(),(0,2,1,3))
-
-    reconstructed_sphere = np.zeros((40962,num_frames),dtype=np.float32)
-
-    if masking_type == 'tubelet':
-
-        for i in range(num_patches):
-            indices_to_extract = indices[str(i)].values
-            if i in ids_tokens_masked:
-                ind =  (ids_tokens_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                reconstructed_sphere[indices_to_extract,:] = batch_tokens_masked[0,ind,:,:].transpose()
-            elif i in ids_tokens_not_masked:
-                ind =  (ids_tokens_not_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                reconstructed_sphere[indices_to_extract,:] = batch_tokens_not_masked[0,ind,:,:].transpose()
-            else:
-                print('issue with indices: {}'.format(i))
-
-        #import pdb;pdb.set_trace()
-        save_gifti(reconstructed_sphere, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'output_sphere_{}_{}.shape.gii'.format(epoch,id)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction','{}'.format(split), \
-                                                                                                                        'output_sphere_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
-            p1.wait()
-
-        reconstructed_sphere_mask_only = np.zeros((40962,num_frames),dtype=np.float32)
-
-        for i in range(num_patches):
-            indices_to_extract = indices[str(i)].values
-            if i in ids_tokens_masked:
-                ind =  (ids_tokens_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                reconstructed_sphere_mask_only[indices_to_extract,:] = batch_tokens_masked[0,ind,:,:].transpose()
-
-        #import pdb;pdb.set_trace()
-        save_gifti(reconstructed_sphere_mask_only, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'output_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), \
-                                                                                                                        'output_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)), 'CORTEX_LEFT'])
-            p1.wait()
-        
-        reconstructed_sphere_not_mask_only = np.zeros((40962,num_frames),dtype=np.float32)
-
-        for i in range(num_patches):
-            indices_to_extract = indices[str(i)].values
-            if i in ids_tokens_not_masked:
-                ind =  (ids_tokens_not_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                reconstructed_sphere_not_mask_only[indices_to_extract,:] = batch_tokens_not_masked[0,ind,:,:].transpose()
-
-        #import pdb;pdb.set_trace()
-        save_gifti(reconstructed_sphere_not_mask_only, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'output_not_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), \
-                                                                                                                        'output_not_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)), 'CORTEX_LEFT'])
-            p1.wait()
-
-        sphere_patched = np.zeros((40962,num_frames),dtype=np.float32)
-
-        for i in range(num_patches):
-            indices_to_extract = indices[str(i)].values
-            if i in ids_tokens_not_masked:
-                sphere_patched[indices_to_extract,:] = new_inputs[0,i,:,:].transpose()
-
-        #import pdb;pdb.set_trace()
-        save_gifti(sphere_patched, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'input_masked_{}_{}.shape.gii'.format(epoch,id)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction','{}'.format(split), \
-                                                                                                                        'input_masked_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
-            p1.wait()
-
-    elif masking_type == 'random':
-        ############################# TO CONTINUEEEEEEEEEEEEEE #######################
-    
-        #import pdb;pdb.set_trace()
-
-        for i in range(num_patches*num_frames):
-            indices_to_extract = indices[str(i%L)].values
-            #print(i,i%L)
-            if i in ids_tokens_masked:
-                #print('index in masked')
-                ind =  (ids_tokens_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                #print(ind)
-                reconstructed_sphere[indices_to_extract,i//L] = batch_tokens_masked[0,ind%n_masked,ind//n_masked,:].transpose()
-            elif i in ids_tokens_not_masked:
-                #print('index in not masked')
-                ind =  (ids_tokens_not_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                #print(ind)
-                reconstructed_sphere[indices_to_extract,i//L] = batch_tokens_not_masked[0,ind%n_not_masked,ind//n_not_masked,:].transpose()
-            else:
-                print('issue with indices: {}'.format(i))
-
-        save_gifti(reconstructed_sphere, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'output_sphere_{}_{}.shape.gii'.format(epoch,id)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction','{}'.format(split), \
-                                                                                                                        'output_sphere_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
-            p1.wait()
-
-        reconstructed_sphere_mask_only = np.zeros((40962,num_frames),dtype=np.float32)
-
-
-        for i in range(num_patches*num_frames):
-            indices_to_extract = indices[str(i%L)].values
-            if i in ids_tokens_masked:
-                ind =  (ids_tokens_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                reconstructed_sphere_mask_only[indices_to_extract,i//L] = batch_tokens_masked[0,ind%n_masked,ind//n_masked,:].transpose()
-
-        save_gifti(reconstructed_sphere_mask_only, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'output_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), \
-                                                                                                                        'output_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)), 'CORTEX_LEFT'])
-            p1.wait()
-        
-        reconstructed_sphere_not_mask_only = np.zeros((40962,num_frames),dtype=np.float32)
-
-        for i in range(num_patches*num_frames):
-            indices_to_extract = indices[str(i%L)].values
-            if i in ids_tokens_not_masked:
-                ind =  (ids_tokens_not_masked[0] == i).nonzero(as_tuple=True)[0][0].cpu().numpy()
-                reconstructed_sphere_not_mask_only[indices_to_extract,i//L] = batch_tokens_not_masked[0,ind%n_not_masked,ind//n_not_masked,:].transpose()
-
-        save_gifti(reconstructed_sphere_not_mask_only, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'output_not_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), \
-                                                                                                                        'output_not_mask_only_{}_{}_it_{}.shape.gii'.format(split,id,epoch)), 'CORTEX_LEFT'])
-            p1.wait()
-
-        sphere_patched = np.zeros((40962,num_frames),dtype=np.float32)
-
-        for i in range(num_patches*num_frames):
-            indices_to_extract = indices[str(i%L)].values
-            if i in ids_tokens_not_masked:
-                sphere_patched[indices_to_extract,i//L] = new_inputs[0,i%L,i//L,:].transpose()
-
-        save_gifti(sphere_patched, os.path.join(folder_to_save_model,'reconstruction', '{}'.format(split), 'input_masked_{}_{}.shape.gii'.format(epoch,id)))
-
-        if not server:
-            p1 = subprocess.Popen(['/home/sd20/software/workbench/bin_linux64/wb_command', '-set-structure',os.path.join(folder_to_save_model,'reconstruction','{}'.format(split), \
-                                                                                                                        'input_masked_{}_{}.shape.gii'.format(epoch,id)), 'CORTEX_LEFT'])
-            p1.wait()
-
 
 def save_reconstruction_mae_test(reconstructed_batch,
                                 reconstructed_batch_unmasked,
